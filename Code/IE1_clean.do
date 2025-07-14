@@ -1,5 +1,8 @@
  cd ..
- 
+
+global figures "writeup_SCOMP\figures"
+global tables "writeup_SCOMP\Tables"
+
 //////////// //////////// //////////// ////////////
 **# Bookmark #1 Clean '3.Aceptaciones' 
 //////////// //////////// //////////// ////////////
@@ -33,6 +36,7 @@ drop aux
 		tab `var'_v
 		display "---"
 	}
+	* there's no variation across the other variables for a given certificado_saldo
 
 	drop *_v
 		
@@ -45,9 +49,13 @@ gen year = substr(aux, 1, 4)
 drop aux
 destring year , replace
 
+
+la var agno_fall "Ano fallecimiento"
+la var mes_fall "Mes fallecimiento"
+la var mto_ult "Salario ultimo mes al solicitar pension"
+
 save Data/3_aceptaciones, replace 
 use Data/3_aceptaciones, clear
-
 keep if inrange(year, 2012, 2019)
 
 save Data/3_aceptaciones_12to19, replace 
@@ -87,6 +95,10 @@ drop if Nrisk == 0 // probably error, since by law they are not allowed to sell
 bysort rut_compania: egen rating_sd = sd(Nrisk)
 
 sort rut_compania fecha 
+
+save Data/4_clasificacion_riesgo, replace 
+
+
 twoway ///
     (line Nrisk fecha if rut_compania == 40507147, legend(label(1 "40507147")))   ///
     (line Nrisk fecha if rut_compania == 13160011, legend(label(2 "13160011"))) ///
@@ -95,7 +107,7 @@ twoway ///
     xtitle("Month") ytitle("Credit rating (higher = better)")  ///
     title("Credit-rating history for two companies")  ///
     legend(order(1 2 3) col(1) size(small))
-graph export "Figures/IE1_credit_history.png", replace
+graph export "$figures/IE1_credit_history.png", replace
 
 	
 xtset rut_compania fecha
@@ -119,8 +131,7 @@ label values cod_modalidad_pension modalidad_pension
 la var id_participe "Insurer" // same numbers as the file "4_clasificacion_riesgo"
 la var tipo_int "Tipo intermediario"
 la var ind_oferta_externa "Indicador Oferta externa"
-// 
-
+ 
 tostring periodo_ingreso, gen(aux) 
 gen year = substr(aux, 1, 4)
 gen month = substr(aux, 5, 6)
@@ -128,12 +139,17 @@ drop aux
 destring year month, replace
 drop if year < 2006 | year > 2019
 
+save Data/2_ofertas_acep, replace
+use Data/2_ofertas_acep, clear
+
 
 keep if cod_modalidad_pension ==  1 
 drop cod_modalidad_pension ind_oferta_rta_vit_inmediata ind_oferta_rta_vit_diferida ind_oferta_rta_vit_inm_r_pro 
 
 tab num_anos_diferidos  num_meses_diferidos   //no variation in this vars
 tab  val_uf_renta_temporal //no variation in this vars
+
+drop periodo_ingreso num_anos_diferidos num_meses_diferidos val_uf_renta_temporal
 
 graph bar (mean) val_uf_pension, ///
     over(year) ytitle("Offer in UF") ///
@@ -166,5 +182,6 @@ save Data/2_ofertas_acep_sampleRV, replace
 use Data/2_ofertas_acep_sampleRV, clear
 
 keep if inrange(year, 2012, 2019)
-	
+tab ind_oferta_externa // only 2% of the offers are external. 
+
 save Data/2_ofertas_acep_12to19RV, replace

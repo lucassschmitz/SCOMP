@@ -1,6 +1,7 @@
 cd ..
  
- 
+global figures "writeup_SCOMP\figures"
+global tables "writeup_SCOMP\Tables"
 * some plots and transform files into .dta. 
  
 ////////////////////////////////////////////////////
@@ -53,8 +54,14 @@ cd ..
 
 	save Data/1_solicitudes, replace
 	use Data/1_solicitudes, clear
+	
+	
 	keep if inrange(year, 2012, 2019) 
-	save Data/1_solicitudes_12to19, replace
+	keep if cod_mod_pension == 1 
+	drop cod_mod_pension
+	tab num_anos_diferidos num_meses_diferidos // no variation 
+	drop num_anos_diferidos num_meses_diferidos
+	save Data/1_solicitudes_12to19RV, replace
 	
 	// Descriptives
 	use Data/1_solicitudes, clear
@@ -62,7 +69,7 @@ cd ..
 	keep if inrange(year, 2006, 2018)
 	graph bar (count) id_certificado_saldo, over(year, gap(1)) /// 
 		title("Requests by year") 	b1title("Year") note("An individual makes multiple requests.")
-	graph export "Figures\IE0_plot0.png", replace
+	graph export "$figures\IE0_plot0.png", replace
 
 		
 		gen val_uf_saldo2 = val_uf_saldo
@@ -70,7 +77,7 @@ cd ..
 		replace val_uf_saldo2 = r(p99) if val_uf_saldo2 > r(p99)
 		
 		histogram val_uf_saldo2 
-	graph export "Figures\IE0_plot1.png", replace
+	graph export "$figures\IE0_plot1.png", replace
 
 
  
@@ -95,7 +102,7 @@ bysort year cod_mod_pension: gen byte toplot = (_n==1)
     order(1 "RV inmediata"  2 "R. temporal con renta vitalicia diferida" 3 "RV inmediata con R. prog."  4 "R. Prog.")  ///
     ring(1) pos(5) cols(2) )
  
- graph export "Figures\IE0_plot2.png", replace
+ graph export "$figures\IE0_plot2.png", replace
 
 
  bysort year: egen total_req = total(req_count) if toplot
@@ -118,7 +125,7 @@ gen share = req_count / total_req if toplot
     ring(1) pos(5) cols(2)      ///
   )
   
-graph export "Figures\IE0_plot3.png", replace
+graph export "$figures\IE0_plot3.png", replace
   
   
 	
@@ -147,7 +154,7 @@ twoway  ///
           4 "R. Prog.")               ///
     ring(1) pos(5) cols(2))
 
-graph export "Figures\IE0_plot4.png", replace
+graph export "$figures\IE0_plot4.png", replace
 
 
 bysort id_certificado_saldo: egen n_requests = nvals(sec_solicitud_oferta)
@@ -155,7 +162,7 @@ bysort id_certificado_saldo: gen byte first_cert = (_n == 1)
 estpost tabulate n_requests if first_cert, missing
 drop first_cert
 
-esttab using "Tables/IE0_requests_per_certificate.tex", ///
+esttab using "$tables/IE0_requests_per_certificate.tex", ///
     cells("count(fmt(0))")           ///
     varlabels(n_requests "Requests per Certificate") ///
     nonumber nomtitle replace	
@@ -171,7 +178,7 @@ twoway scatter num_meses_diferidos num_meses_garantizados if sample1, jitter(2) 
         title("By Pension Modality") ///
         note("Sampled 1% to reduce overplotting")) ///
     legend(off)
-graph export "Figures\IE0_plot5.png", replace
+graph export "$figures\IE0_plot5.png", replace
 
 * clean up
 drop sample1	
@@ -204,7 +211,7 @@ drop val_uf_saldo2-n_requests
  
  
  ////////////////////////////////////////////////////
-**# Bookmark #3 Clean '2.ofertas_mustra_sol'
+**# Bookmark #3 Clean '2.ofertas_muestra_sol'
  ////////////////////////////////////////////////////
 import delimited "Data/2_ofertas_muestra_sol/2_ofertas_sample_sol.csv", clear 
  
@@ -221,50 +228,3 @@ destring year month, replace
 keep if inrange(year, 2012, 2019) 
 
 save Data/2_ofertas_sol_12to19, replace 
-
-
-
-///// some extra code below. 
-
-/*
-use Data/2ofertas_sol
-
-
-/*
-hypothesis 
-- id_oferta: unique id for each offer -> should not have repeated values (F: does have repeated values)
-
-sec_oferta: 
-
-
---- isid id_oferta sec_oferta -> not unique identifier. I do not understand exactly what 
-
-
-*/ 
-
-isid id_oferta 
-duplicates report id_oferta 
-isid id_oferta sec_oferta
-duplicates report id_oferta sec_oferta
-
-isid id_oferta id_certificado
-duplicates report id_oferta id_certificado
-
-by id_certificado: gen N = _N 
-by id_certificado: gen temp  = (_n == 1)  
-tab N if temp == 1  
-summ N if temp == 1 
-
-bysort id_certificado: egen aux = max(val_uf_pension)
-bysort id_certificado: egen aux2 = min(val_uf_pension)
-gen range = aux - aux2
-bysort id_certificado: egen sd = sd(val_uf_pension)
-
-summ range if temp == 1 // mean 3 
-summ val_uf_pension if temp == 1 // mean 12 
-summ sd if temp == 1 // mean 1
-
-
-estpost summarize range val_uf_pension aux3 if temp==1 
-
- sort id_certificado id_oferta
