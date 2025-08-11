@@ -60,6 +60,10 @@ keep if inrange(year, 2012, 2019)
 
 save Data/3_aceptaciones_12to19, replace 
  
+use Data/3_aceptaciones, clear
+keep if inrange(year, 2004, 2011)
+
+save Data/3_aceptaciones_04to11, replace 
 //////////// //////////// //////////// ////////////
 **# Bookmark #2  Clean '4.clasificacion_riesgo'
 //////////// //////////// //////////// ////////////

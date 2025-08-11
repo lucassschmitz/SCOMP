@@ -53,15 +53,29 @@ global tables "writeup_SCOMP\Tables"
 	drop aux
 
 	save Data/1_solicitudes, replace
+	
 	use Data/1_solicitudes, clear
+	keep if inrange(year, 2004, 2011) 
+	save Data/1_solicitudes_04to11, replace
+
+	keep if cod_mod_pension == 1 
+	drop cod_mod_pension
+	tab num_anos_diferidos num_meses_diferidos // no variation 
+	drop num_anos_diferidos num_meses_diferidos
+	save Data/1_solicitudes_04to11RV, replace
 	
 	
+	use Data/1_solicitudes, clear
 	keep if inrange(year, 2012, 2019) 
+	save Data/1_solicitudes_12to19, replace
 	keep if cod_mod_pension == 1 
 	drop cod_mod_pension
 	tab num_anos_diferidos num_meses_diferidos // no variation 
 	drop num_anos_diferidos num_meses_diferidos
 	save Data/1_solicitudes_12to19RV, replace
+	
+	
+	
 	
 	// Descriptives
 	use Data/1_solicitudes, clear
@@ -214,17 +228,21 @@ drop val_uf_saldo2-n_requests
 **# Bookmark #3 Clean '2.ofertas_muestra_sol'
  ////////////////////////////////////////////////////
 import delimited "Data/2_ofertas_muestra_sol/2_ofertas_sample_sol.csv", clear 
- 
 sort id_oferta 
 keep if cod_modalidad_pension ==  1 
-
-save Data/2_ofertas_sol, replace 
-use Data/2_ofertas_sol, clear
 tostring periodo_ingreso, gen(aux) 
 gen year = substr(aux, 1, 4)
 gen month = substr(aux, 5, 6)
-
 destring year month, replace
-keep if inrange(year, 2012, 2019) 
+save Data/2_ofertas_sol, replace 
 
+
+use Data/2_ofertas_sol, clear
+keep if inrange(year, 2012, 2019) 
 save Data/2_ofertas_sol_12to19, replace 
+
+
+use Data/2_ofertas_sol, clear
+keep if inrange(year, 2004, 2011) 
+save Data/2_ofertas_sol_04to11, replace 
+

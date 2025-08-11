@@ -72,3 +72,43 @@ capture drop temp
 save "Data/2_ofertas.dta", replace
 
 di as txt "All files processed and merged successfully"
+
+
+/////////////////////////////////////////////////
+// Select only annuities and join the chuncks
+
+* Create an empty dataset to start
+clear
+gen temp = .
+save "Data/2_ofertas04to11.dta", replace
+
+* Loop through all the files
+forvalues part = 1/29 {
+    * Load the chunk
+    use "Data/2_ofertas/part`part'.dta", clear
+    
+    * Apply the selection
+    keep if cod_modalidad_pension == 1
+	tostring periodo_ingreso, gen(aux) 
+	gen year = substr(aux, 1, 4) 
+	destring year, replace
+	drop aux
+	keep if inrange(year, 2004, 2011)
+    
+    * Append to main dataset
+    append using "Data/2_ofertas04to11.dta"
+    
+    * Save as main (replacing the previous version)
+    save "Data/2_ofertas04to11.dta", replace
+    
+    * Display progress
+    di as txt "Processed and appended part `part'"
+}
+
+* Drop the temporary variable if it still exists
+capture drop temp
+
+* Save the final dataset
+save "Data/2_ofertas04to11.dta", replace
+
+di as txt "All files processed and merged successfully"

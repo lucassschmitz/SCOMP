@@ -132,6 +132,9 @@ use Data/2_ofertas, clear
 	tab val_uf_rp val_uf_rt // no variation 
 	drop val_uf_rp val_uf_rt
 	
+	label var val_uf_pension "Offer: monthly payment"
+	label var val_uf_saldo "Stock of savings"
+
 	save temp4_full, replace
 	
 	/* 
@@ -169,7 +172,7 @@ use Data/2_ofertas, clear
 	label values ext_cat extcat
 
 	graph bar (percent) first_cert if first_cert, over(ext_cat)  /// 
-	ytitle("Share (%)") title("Dist. Num. External Offers") name("plot1", replace)
+	ytitle("Share (%)")  b1title("Number of searches") title("Distribution of search") name("plot1", replace)
 	
 	graph export "$figures\IE3_dist_external_offers.png", replace
 	
@@ -275,8 +278,26 @@ twoway  (line hazard ext_cat if tag & income_q==1, sort) ///
  
 graph export "$figures\IE3_search_hazardrate_by_income_quintile.png", replace
 
+// search by gender 
 
-	
+gen male = 1 if sexo == "M" 
+replace male = 0 if sexo == "F"
+
+reg n_ext male if first_cert // males search less
+
+local b_z : display %6.2f _b[male]
+file open texdefs using "$tables/IE3_coefficient11.tex", write replace
+file write texdefs "`b_z'" _n
+file close texdefs
+
+graph bar (mean) n_ext if first_cert, ///
+    over(male) ///
+    ytitle("Average # External Offers") ///
+    title("External Offers by gender")
+graph export "$figures\IE3_search_by_gender.png", replace // almost no difference in search by gender.
+
+
+
 ////////////////////////////////////////////////	
 **# Bookmark #4 within group are offers the same? 
 ////////////////////////////////////////////////
@@ -446,6 +467,7 @@ replace amount_external = . if ind_oferta_externa == "S"
 gen improvement_pct = 100* (amount_external - val_uf_pension)/val_uf_pension 
 gen improvement_abs = amount_external - val_uf_pension 
 
+order sexo
 	 drop id_aceptacion_oferta-per_dev_uc num_mes_cot-rut_participe ind_condicion_cobertura por_alternativa_art6 ind_eld tipo_monto_eld
 
 local r = 0.003 // monthly rate of return of AFP during last 20 years https://bigdatauls.userena.cl/dashboards/rentabilidad-fondo-de-pensiones/
@@ -457,6 +479,24 @@ gen improvement_wage = improvement_PV20 / mto_ult
 estpost summarize improvement_abs improvement_pct improvement_PV20 improvement_wage 
 esttab using "$tables/IE3_offer_improvement.tex", cells("mean sd min max count") ///
 	title("Improvement when searching") replace
+	
+* improvements by gender. 
+est clear
+estpost tabstat improvement_abs improvement_pct improvement_PV20 improvement_wage, ///
+    by(sexo) statistics(mean sd min max n)
+ 
+* improvement by quintile 
+xtile income_q = val_uf_saldo if first_cert, nq(5)
+label define qlab 1 "Q1 (low)" 2 "Q2" 3 "Q3" 4 "Q4" 5 "Q5 (high)", replace
+label values income_q qlab
+
+est clear
+estpost tabstat improvement_abs improvement_pct improvement_PV20 improvement_wage, ///
+    by(income_q) statistics(mean sd min max n)
+
+
+histogram improvement_wage if improvement_wage < 10 & -1 < improvement_wage, title("PV improvement in terms of last wage") xtitle("PV improvement/monthly wage")
+graph export "$figures\IE3_offer_improvement_histogram.png", replace
 
 
 ////////////////////////////////////////////////	
@@ -551,7 +591,7 @@ esttab using "$tables/IE3_number_initial_offers.tex", cells("mean sd min max cou
 	gen foregone_pct = 100* (max_amount -accepted_amount) / accepted_amount   if acc_highest == 0 
 	summ foregone_ // people who do not accept the highest forego a 1.5% higher pension 
 
-	histogram foregone if first_cert == 1
+	histogram foregone if first_cert == 1, title("Dist. foregone value") xtitle("(Highest offer/Chosen offer -1)%") 
 	graph export "$figures\IE3_foregone_hist.png", replace
 
 	local r = 0.003 
@@ -679,22 +719,281 @@ replace dead  = 1 if !missing(agno_fall)
 			star(* 0.10 ** 0.05 *** 0.01)            /// significance stars
 			stats(N, fmt(%9.0gc) labels("Obs."))     /// number of obs.
 			nomtitles noobs  addnote("Includes year fixed effects")  	
+		
+		
+////////////////////////////////////////////////
+**# Bookmark #12 supply 
+////////////////////////////////////////////////
 	
+use temp4_full, clear 
+est clear
+ 
+
+* Keep only accepted offers
+keep if accepted2 == 1
+gen age = year - agno_nac
+gen age_bin = floor((age)/5)*5 // 5-year bins 
+xtile age_q = age, nq(5) 
+xtile income_q = val_uf_saldo, nq(5)
+
+
+bysort age: gen total_age = _N
+bysort age_bin: gen total_bin = _N
+bysort income_q: gen total_quin = _N 
+bysort age_q: gen total_age_quin = _N 
+
+bysort age id_participe: gen sold = _N 
+bysort age_bin id_participe: gen sold_bin = _N 
+bysort income_q id_participe: gen sold_quin = _N 
+bysort age_q id_participe: gen sold_age_quin = _N 
+
+gen share_age = sold/total_age 
+gen share_bin = sold_bin / total_bin 
+gen share_inc_q = sold_quin / total_quin
+gen share_age_q = sold_age_quin / total_age_quin
+
+keep total* age* sold* share* id_participe income_q age_q
+
+preserve 
+keep age_q share_age_q id_participe sold_age_quin total_age_quin
+drop  sold_age_quin total_age_quin
+duplicates drop
+bysort id_participe: egen aux = mean(share_age_q) 
+drop if aux < .06 
+drop aux 
+rename share_age_q firm 
+tostring id_participe, replace
+replace id_participe = substr(id_participe, 1,4)
+destring id_participe, replace
+reshape wide firm, i(age_q) j(id_participe)
+twoway line firm* age_q, sort title("Market Share by age quintile") ///
+    ytitle("Market Share") xtitle("Age quintile")
+graph export "$figures\IE3_supply_age_quintile.png", replace
+restore 
+
+
+preserve 
+keep income_q share_inc_q id_participe sold_quin total_quin
+drop sold_quin total_quin
+duplicates drop
+bysort id_participe: egen aux = mean(share_inc_q) 
+drop if aux < .06 
+drop aux 
+rename share_inc_q firm 
+tostring id_participe, replace
+replace id_participe = substr(id_participe, 1,4)
+destring id_participe, replace
+reshape wide firm, i(income_q) j(id_participe)
+twoway line firm* income_q, sort title("Market Share by income quintile") ///
+    ytitle("Market Share") xtitle("Income quintile")
+graph export "$figures\IE3_supply_income_quintile.png", replace
+restore 
+
+
+preserve 
+drop if age > 69
+bysort id_participe: egen aux = min(sold) 
+drop if aux < 10
+drop aux
+keep age share_age id_participe 
+duplicates drop
+reshape wide share_age, i(age) j(id_participe)
+twoway line share* age, sort title("Market Share by Age") ///
+    ytitle("Market Share") xtitle("Age")
+graph export "$figures\IE3_supply_age.png", replace
+restore 
+
+
+preserve 
+drop if age > 69
+bysort id_participe: egen aux = min(sold) 
+drop if aux < 10
+drop aux
+keep age_bin share_bin id_participe 
+duplicates drop
+reshape wide share_bin, i(age_bin) j(id_participe)
+twoway line share* age, sort ///
+    title("Market Share by Age bin") ///
+    ytitle("Market Share") xtitle("Age bin")
+graph export "$figures\IE3_supply_agebin.png", replace
+restore 
 	
+////////////////////////////////////////////////
+**# Bookmark #13 supply2
+////////////////////////////////////////////////
 	
+use temp4_full, clear 
+est clear
+ 
+keep if ind_oferta_externa == "N" // keep only initial offers. 
+drop periodo_ingreso-val_uf_monto_eld
+gen age = year - agno_nac
+xtile age_q = age, nq(5) 
+xtile income_q = val_uf_saldo, nq(5)
+
+duplicates report  id_certificado_saldo sec_solicitud_oferta id_participe // THIS IS  APROBLEM I DO NOT UNDERSTAND WHY IS IT THE CASE THAT THERE ARE DUPLICATES. 
+
+egen requests_age = nvals(id_certificado_saldo sec_solicitud_oferta), by(age) 
+egen requests_age_q = nvals(id_certificado_saldo sec_solicitud_oferta), by(age_q) 
+egen requests_income_q = nvals(id_certificado_saldo sec_solicitud_oferta), by(income_q) 
+
+egen offers_age = nvals(id_certificado_saldo sec_solicitud_oferta), by (age id_participe) 
+egen offers_age_q = nvals(id_certificado_saldo sec_solicitud_oferta), by (age_q id_participe) 
+egen offers_income_q = nvals(id_certificado_saldo sec_solicitud_oferta), by (income_q id_participe) 
+
+gen share_age = offers_age / requests_age
+gen share_age_q = offers_age_q / requests_age_q
+gen share_income_q = offers_income_q / requests_income_q
+
+keep offers* age* request* share* id_participe income_q age_q
+
+
+preserve 
+keep age requests_age offers_age share_age id_participe
+drop if requests < 500
+duplicates drop 
+drop requests offers 
+reshape wide share, i(age) j(id_participe)
+twoway line share* age, sort title("Probability of offer by age") ///
+    ytitle("Offer probability") xtitle("Age")
+graph export "$figures\IE3_supply_offerprob_age.png", replace
+restore 
+
+
+preserve 
+keep age_q requests_age_q offers_age_q share_age_q id_participe
+ duplicates drop 
+drop requests offers 
+reshape wide share, i(age) j(id_participe)
+twoway line share* age, sort title("Probability of offer by age quintile") ///
+    ytitle("Offer probability") xtitle("Age Quintile")
+graph export "$figures\IE3_supply_offerprob_age_q.png", replace
+
+restore 
+
+preserve 
+keep income_q requests_income_q offers_income_q share_income_q id_participe
+duplicates drop 
+drop requests offers 
+rename share_income_q firm 
+tostring id_participe, replace
+replace id_participe = substr(id_participe, 1,4)
+destring id_participe, replace
+reshape wide firm, i(income_q) j(id_participe)
+twoway line firm* income, sort title("Probability of offer by income quintile") ///
+    ytitle("Offer probability") xtitle("Income Quintile")
+graph export "$figures\IE3_supply_offerprob_income_q.png", replace
+
+drop firm9971 firm9984 firm9999 firm1353 firm3451 firm6668 firm5132
+twoway line firm* income, sort title("Probability of offer by income quintile") ///
+    ytitle("Offer probability") xtitle("Income Quintile")
+graph export "$figures\IE3_supply_offerprob_income_q(2).png", replace
+restore 
 	
-	////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////
+**# Bookmark #14 supply3
+////////////////////////////////////////////////
+	
+use temp4_full, clear
+est clear
+
+keep if ind_oferta_externa == "N"
+
+drop periodo_ingreso-val_uf_monto_eld
+gen age = year - agno_nac
+xtile age_q = age, nq(5)
+
+tempfile base //   base dataset for looping
+
+save `base'
+
+// loop over years 
+levelsof year, local(years)
+foreach y of local years {
+
+    use `base', clear
+    keep if year == `y'
+
+    duplicates report id_certificado_saldo sec_solicitud_oferta id_participe
+
+    egen requests_age_q = nvals(id_certificado_saldo sec_solicitud_oferta), by(age_q)
+
+    egen offers_age_q = nvals(id_certificado_saldo sec_solicitud_oferta), by(age_q id_participe)
+
+    gen share_age_q = offers_age_q / requests_age_q
+
+    keep age_q id_participe share_age_q
+    duplicates drop
+
+    reshape wide share_age_q, i(age_q) j(id_participe)
+
+    twoway line share_age_q* age_q, sort ///
+        title("Offer probability by age quintile, `y'") ///
+        ytitle("Offer probability") xtitle("Age quintile")
+
+    graph export "$figures/IE3_supply_offerprob_age_q_`y'.png", replace
+}
+
+ 
+ 
+
+
+	
+////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////
 /////////////// worked up to this point ///////////////// 	
 	////////////////////////////////////////////////////////////////
 	////////////////////////////////////////////////////////////////
-	////////////////////////////////////////////////////////////////
+	////////////////////////////////////////////////////////////////	
 
 	
-		
-////////////////////////////////////////////////
-**# Bookmark #11 look at date of death and whether correlates with something of the external offers. 
-////////////////////////////////////////////////
+/*
 
-			
+I wanted to see whether people who are expected to bargain get better or worse offers,
+p_ext: ex-ante probability of bargaining 
+resid: quality of the offer, a higher resid means that controling for age and gender the offer is good 
+
+since the correlation between p_ext and resid is negative people who are expected to bargain get a lower offer.  
+
+*/ 
+use temp4_full, clear
+
+drop id_aceptacion_oferta-id_aceptante per_dev_uc num_mes_cot-val_uf_pension_referencia ind_condicion_cobertura por_alternativa_art6 ind_eld tipo_monto_eld id_inter_oferta_ext-val_uf_comision_inter_o_ext
+
+ 
+
+gen age = year - agno_nac
+generate male = (sexo == "F")
+bysort id_certificado_saldo sec_solicitud_oferta: egen external_any = max(ind_oferta_externa == "S")
+
+
+
+
+drop first_cert 
+bysort id_certificado_saldo sec_solicitud_oferta: gen first_cert = (_n ==1)
+
+logit external_any   male val_uf_saldo age if first_cert
+
+predict p_ext if first_cert
+
+
+
+gen ratio = log(val_uf_pension/ val_uf_saldo)
+
+reg ratio age male if first_cert
+predict resid, residuals
+
+reg resid p_ext
+
+
+
+
+////////////////////////////////////////////////
+**# Bookmark #14 look at date of death and whether correlates with something of the external offers. 
+////////////////////////////////////////////////
+///
+
+drop ind_condicion_cobertura por_alternativa_art6 ind_eld tipo_monto_eld 
+
+drop rut_agente por_comision_aceptada_rv-cod_super_adm_seleccionada
